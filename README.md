@@ -2,125 +2,148 @@
 
 **Geometric Redundancy-Aware Step Pruning for Inference in Diffusion Trajectories**
 
-A training-free, model-agnostic framework for accelerating diffusion model sampling.
-
-## Quickstart
-
-```bash
-# Install
-pip install -e .
-
-# Verify core algorithm (CPU only, no models needed)
-python tests/test_core.py
-
-# Run Experiment 1 demo (synthetic trajectories)
-python -m experiments.exp1_pareto --ref_batch 50 --output figures/exp1_demo.pdf
-```
+---
 
 ## Project Structure
 
 ```
 geosprint/
-├── geosprint/              # Core library
-│   ├── core.py             # Hyperplanarity test, pruning, projection score
-│   ├── schedule.py         # Universal + adaptive schedule extraction
-│   ├── sampler.py          # Apply schedules to generate samples
-│   ├── trajectories.py     # Record denoising paths from pretrained models
-│   └── evaluate.py         # FID, IS, projection score stats, LaTeX tables
-├── experiments/            # One script per paper experiment
-│   └── exp1_pareto.py      # Exp 1: FID vs NFE Pareto frontiers
+├── geosprint/           # Core library (no GPU needed)
+│   ├── core.py          # Hyperplanarity test, pruning, projection score
+│   ├── schedule.py      # Universal + adaptive schedule extraction
+│   ├── sampler.py       # Apply schedules to generate samples
+│   ├── trajectories.py  # Record denoising paths from pretrained models
+│   └── evaluate.py      # FID, IS, metrics, LaTeX table generator
+├── scripts/             # Experiment runners
+│   ├── setup_fid_stats.py  # Download CIFAR-10, compute Inception stats
+│   ├── run_exp1.py         # FID vs NFE Pareto frontier (GPU)
+│   ├── run_exp2.py         # Schedule w(t) analysis (CPU)
+│   ├── run_exp3.py         # α_traj across schedulers (GPU)
+│   ├── run_exp4.py         # GeoSPRINT + DPM-Solver++ composability (GPU)
+│   ├── run_exp5.py         # Reference set convergence (CPU)
+│   ├── run_exp6.py         # Per-sample NFE distribution (CPU)
+│   └── collect.py          # Collect all results
 ├── tests/
-│   └── test_core.py        # Core algorithm verification (7 tests)
-├── figures/                # Output plots and tables
-├── configs/                # Experiment configs (YAML)
+│   └── test_core.py     # 7 verification tests (CPU, 10 sec)
+├── slurm/
+│   └── submit_all.sh    # HPC submission (gpu + highmem partitions)
+├── figures/             # Output PDFs (paper-ready)
+├── results/             # Output JSON + numpy
 └── setup.py
 ```
 
-## Experiment Execution Order
+---
 
-Run in this order to build results for the paper:
+## End-to-End Instructions
 
-| # | Experiment | Script | GPU needed | Approx time |
-|---|-----------|--------|-----------|-------------|
-| 0 | Verify core | `tests/test_core.py` | No | 10 sec |
-| 1 | FID vs NFE Pareto | `experiments/exp1_pareto.py` | Yes | 6-12 hrs |
-| 2 | Schedule w(t) analysis | `experiments/exp2_schedule.py` | No* | 30 min |
-| 3 | α_traj rectification diagnostic | `experiments/exp3_rectification.py` | Yes | 2-4 hrs |
-| 4 | GeoSPRINT + DPM-Solver++ | `experiments/exp4_compose.py` | Yes | 4-8 hrs |
-| 5 | Reference batch size B | `experiments/exp5_ref_convergence.py` | No* | 1 hr |
-| 6 | Per-sample NFE distribution | `experiments/exp6_adaptive.py` | Yes | 4-8 hrs |
-| 7 | Domain transfer (scRNA) | `experiments/exp7_domain.py` | Yes | 2-4 hrs |
+### Option A: Laptop / Single GPU
 
-*Experiments 2 and 5 operate on saved trajectories from Experiment 1.
+```bash
+# ─── Step 0: Install (2 min) ───
+cd geosprint
+pip install -e .
+pip install diffusers accelerate transformers safetensors
+pip install clean-fid pytorch-fid torchvision
+pip install matplotlib scipy tqdm
 
-## Connecting to Real Models
+# Verify core algorithm (no GPU, 10 seconds)
+python tests/test_core.py
 
-Replace the synthetic trajectory generation in `exp1_pareto.py` with:
 
-### CIFAR-10 (EDM)
-```python
-# pip install edm  (or clone https://github.com/NVlabs/edm)
-from geosprint.trajectories import record_trajectory_edm
-model = load_edm_model('edm-cifar10-32x32-uncond-vp.pkl')
-sigma_schedule = edm_sigma_schedule(num_steps=1000)
-bundle = record_trajectory_edm(model, sigma_schedule, batch_size=100)
+# ─── Step 1: FID reference stats (10 min, downloads CIFAR-10) ───
+python scripts/setup_fid_stats.py
+
+
+# ─── Step 2: Experiment 1 — FID vs NFE Pareto (4-6 hrs GPU) ───
+python scripts/run_exp1.py --device cuda --num_samples 10000
+
+# If you need to restart (reuses saved trajectories):
+python scripts/run_exp1.py --device cuda --num_samples 10000 --skip_record
+
+
+# ─── Step 3: Experiment 3 — α_traj diagnostic (5 min GPU) ───
+python scripts/run_exp3.py --device cuda
+
+
+# ─── Step 4: Experiment 4 — GeoSPRINT + DPM-Solver++ (2-3 hrs GPU) ───
+# Requires exp1 trajectories. Tests composability.
+python scripts/run_exp4.py --device cuda --num_samples 10000
+
+
+# ─── Step 5: CPU experiments (30 min total, no GPU) ───
+python scripts/run_exp2.py
+python scripts/run_exp5.py
+python scripts/run_exp6.py
+
+
+# ─── Step 6: Collect all results ───
+python scripts/collect.py
 ```
 
-### Stable Diffusion v1.5 (HuggingFace diffusers)
-```python
-from diffusers import StableDiffusionPipeline
-from geosprint.trajectories import record_trajectory_diffusers
+### Option B: HPC Cluster (SLURM)
 
-pipe = StableDiffusionPipeline.from_pretrained(
-    "runwayml/stable-diffusion-v1-5", torch_dtype=torch.float16
-).to("cuda")
-
-bundle = record_trajectory_diffusers(
-    pipe, prompt="a photo of a cat", num_inference_steps=50, batch_size=100
-)
+```bash
+cd geosprint
+bash slurm/submit_all.sh
 ```
 
-### ImageNet 64×64 (ADM / guided-diffusion)
-```python
-# Clone https://github.com/openai/guided-diffusion
-from geosprint.trajectories import record_trajectory_generic
-
-def denoise_fn(z, t):
-    return guided_diffusion_step(model, z, t)
-
-traj = record_trajectory_generic(denoise_fn, initial_noise, timesteps)
+This submits 5 chained jobs:
+```
+Job 0 (setup, 30 min)
+  ├── Job 1 (exp1, 8 hrs GPU)     ← the big one
+  │     └── Job 2 (exp2+5+6, 1 hr CPU)
+  └── Job 3 (exp3, 3 hrs GPU)     ← parallel with Job 1
+        └── Job 4 (collect)
 ```
 
-## Key API
+Monitor: `squeue -u $USER` and `tail -f logs/exp1_<JOBID>.out`
+
+---
+
+## What Each Experiment Produces
+
+| Exp | Figure | Key Result |
+|-----|--------|------------|
+| 1 | `figures/exp1_pareto.pdf` | FID vs NFE curves for GeoSPRINT, DDIM, DPM-Solver++ |
+| 2 | `figures/exp2_schedule.pdf` | Where GeoSPRINT places steps (retention heatmap) |
+| 3 | `figures/exp3_rectification.pdf` | α_traj: DDPM >> DDIM >> DPM++ (confirms Corollary) |
+| 4 | `figures/exp4_compose.pdf` | DPM++ with GeoSPRINT schedule vs default schedule |
+| 5 | `figures/exp5_convergence.pdf` | Schedule converges at B ≈ 50-100 reference trajectories |
+| 6 | `figures/exp6_adaptive.pdf` | Per-sample NFE histogram (complex samples get more steps) |
+
+All results also saved as JSON in `results/exp*/` and a LaTeX table in `results/exp1/exp1_table.tex`.
+
+---
+
+## Troubleshooting
+
+**`torch.xpu` AttributeError**: Your PyTorch is too old. Run:
+```bash
+pip install --upgrade torch torchvision
+pip install --upgrade diffusers accelerate
+```
+
+**DPM-Solver++ IndexError**: Already fixed in this codebase. The fixes:
+1. Manual `DPMSolverMultistepScheduler(...)` constructor (bypasses `from_pretrained` ignoring kwargs)
+2. `solver_order=2` + `lower_order_final=True` (prevents last-step overflow)
+3. Fresh scheduler per trajectory (resets internal `step_index` counter)
+
+**Exp1 `--skip_record`**: Reuses trajectories from a previous run. Safe to use after any crash in Phase 3+.
+
+---
+
+## API Quick Reference
 
 ```python
-from geosprint import (
-    prune_trajectory,        # Single trajectory → PruneResult
-    multi_level_prune,       # Progressive L1→L2→... pruning
-    threshold_search,        # Auto-find optimal τ
-    extract_universal_schedule,  # B trajectories → UniversalSchedule
-    sweep_nfe_budgets,       # Multiple NFE budgets at once
-    projection_score,        # α_traj computation
-    format_results_table,    # → LaTeX booktabs table
-)
+from geosprint import prune_trajectory, threshold_search, extract_universal_schedule
 
-# Core usage
+# Prune a single trajectory
 result = prune_trajectory(trajectory, k=2, threshold=0.01)
 print(f"Removed {result.reduction_pct:.1f}%, α={result.projection_score:.2e}")
 
-# Universal schedule
+# Auto-find optimal threshold
+tau, result = threshold_search(trajectory, k=2, target_alpha=1e-3)
+
+# Extract universal schedule from B reference trajectories
 schedule = extract_universal_schedule(trajectories, timesteps, nfe_budget=20)
-print(f"Selected {schedule.nfe} steps, α={schedule.mean_alpha:.2e}")
-```
-
-## Citation
-
-```bibtex
-@inproceedings{geosprint2026,
-  title={GeoSPRINT: Geometric Redundancy-Aware Step Pruning 
-         for Inference in Diffusion Trajectories},
-  author={Anonymous},
-  booktitle={NeurIPS},
-  year={2026}
-}
 ```
