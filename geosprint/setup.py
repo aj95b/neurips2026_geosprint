@@ -7,11 +7,22 @@ setup(
     python_requires=">=3.9",
     install_requires=[
         "numpy>=1.21",
-        "torch>=2.0",
-        "diffusers>=0.25",
-        "transformers>=4.30",
-        "pytorch-fid>=0.3",
-        "matplotlib>=3.5",
-        "tqdm>=4.60",
     ],
+    extras_require={
+        "gpu": [
+            "torch>=2.0",
+            "diffusers>=0.25",
+            "transformers>=4.30",
+            "accelerate",
+            "safetensors",
+        ],
+        "eval": [
+            "clean-fid",
+            "pytorch-fid>=0.3",
+            "torchvision",
+        ],
+        "viz": [
+            "matplotlib>=3.5",
+        ],
+    },
 )
