@@ -2,7 +2,7 @@
 Rebuttal experiment: DPM-Solver++ on Stable Diffusion v1.5.
 
 Generates DPM-Solver++ samples at the SAME NFEs as the existing
-GeoSPRINT / DDIM runs (8, 15, 20, 24, 29, 34, 39, 44, 51) using the
+GeoSPRINT / DDIM runs (15, 20, 24, 29, 34, 39, 44) using the
 SAME prompts, seeds, and guidance scale, then computes FID against
 the SAME 50-step DDIM baseline directory.
 
