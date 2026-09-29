@@ -15,9 +15,9 @@
 
 ## TL;DR
 
-Diffusion sampling is slow because it takes many sequential neural function evaluations (NFEs). GeoSPRINT looks at the **geometry of the denoising trajectory** — which steps actually bend the path and which just trace a straight line — and places sampling steps where they matter. It requires **no retraining, no distillation, and no changes to the model**. A short offline pass over a handful of reference trajectories yields a schedule you reuse for all future samples.
+Diffusion sampling is slow because it takes many sequential neural function evaluations (NFEs). GeoSPRINT looks at the **geometry of the denoising trajectory**: which steps actually bend the path and which just trace a straight line and places sampling steps where they matter. It requires **no retraining, no distillation, and no changes to the model**. A short offline pass over a handful of reference trajectories yields a schedule you reuse for all future samples.
 
-On three models spanning pixel- and latent-space diffusion, GeoSPRINT consistently improves FID over uniform DDIM at matched NFE, and — above a crossover budget of ~30 steps — a first-order DDIM solver on a GeoSPRINT schedule matches or beats the second-order DPM-Solver++ on its own default schedule.
+On three models spanning pixel- and latent-space diffusion, GeoSPRINT consistently improves FID over uniform DDIM at matched NFE, and above a crossover budget of ~30 steps, a first-order DDIM solver on a GeoSPRINT schedule matches or beats the second-order DPM-Solver++ on its own default schedule.
 
 > **Accepted at NeurIPS 2026.** Single-author work by Arpita Joshi (The Scripps Research Institute).
 
